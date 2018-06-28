@@ -18,9 +18,9 @@ fn main() {
         let first_token: u8 = content[0];
 
         let mut torrent: TorrentContent = TorrentContent::new(content);
-   		let res = torrent.decode_func(first_token)(&mut torrent);
+        let res = torrent.decode_func(first_token)(&mut torrent);
 
-   		println!("{:?}", res);
+        println!("{:?}", res);
    }
 
 }
