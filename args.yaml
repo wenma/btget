@@ -1,0 +1,23 @@
+name: btget
+version: "0.1.0"
+author: Wen Ma <wenma1993@gmail.com>
+args:
+    - speed:
+        short: s
+        long: speed
+        value_name: M/s
+        help: Sets a custom download speed
+        takes_value: true
+    - analysis:
+        short: a
+        long: analysis   
+        help: Only do analysis stuff for the torrent file
+        requires: FILE
+    - FILE:
+        help: Sets the input torrent file to use
+        required: true
+        index: 1
+    - verbose:
+        short: v
+        multiple: true
+        help: Sets the level of verbosity
