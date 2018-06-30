@@ -4,9 +4,12 @@
 extern crate clap;
 use clap::App;
 
+#[macro_use] 
+extern crate prettytable;
+extern crate number_prefix;
 
 mod parser;
-use parser::TorrentContent;
+use parser::{FileContent, TorrentContent, Value};
 
 
 fn main() {
@@ -20,7 +23,13 @@ fn main() {
         let mut torrent: TorrentContent = TorrentContent::new(content);
         let res = torrent.decode_func(first_token)(&mut torrent);
 
-        println!("{:?}", res);
+        let mut files = Vec::<FileContent>::new();
+        Value::contents(res, &mut files);
+
+        FileContent::pprint(&files);        
+
+   } else {
+        println!("Those features are Not Completed yet !");
    }
 
 }

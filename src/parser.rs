@@ -1,9 +1,12 @@
 
-
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::collections::HashMap;
+
+use prettytable::Table;
+use prettytable::format;
+use number_prefix::{binary_prefix, Standalone, Prefixed};
 
 
 pub fn get_content(path: &str) -> ::std::io::Result<Vec<u8>> { 
@@ -12,15 +15,6 @@ pub fn get_content(path: &str) -> ::std::io::Result<Vec<u8>> {
     let mut content: Vec<u8> = Vec::new();
     file.read_to_end(&mut content)?;
     Ok(content)
-}
-
-
-fn to_sha1_hex(slice: &[u8]) -> String {
-    let mut ret: String = String::new();
-    for s in slice {
-        ret += format!("{:02x}", s).as_str();
-    }
-    ret
 }
 
 
@@ -33,13 +27,111 @@ fn absolute_path(path: &str) -> Option<String> {
 }
 
 
+fn to_sha1_hex(slice: &[u8]) -> String {
+    let mut ret: String = String::new();
+    for s in slice {
+        ret += format!("{:02x}", s).as_str();
+    }
+    ret
+}
+
+
+#[derive(Debug)]
+pub struct FileContent {
+    path: String,
+    length: u64,
+    filehash: String
+}
+
+
+impl FileContent {
+    pub fn pprint(files: &Vec<FileContent>) {
+        let mut table = Table::new();
+
+        table.add_row(row![bFg -> "文件大小", bFg -> "文件名", bFg -> "hash值"]);
+        for file in files {
+            let length = match binary_prefix(file.length as f32) {
+                Prefixed(prefix, n) => format!("{:.2} {}B", n, prefix),
+                Standalone(bytes) => format!("{} bytes", bytes)
+            };
+            table.add_row(row![length, file.path, file.filehash]);
+        }
+
+        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        table.printstd();
+        println!("");
+    }
+}
+
+
 #[derive(Debug)]
 pub enum Value {
-    Int(u32),
+    Int(u64),
     Strings(String),
     List(Vec<Value>),
     Dict(HashMap<String, Value>)
 }
+
+
+impl Value {
+    fn get_string(&self) -> String {
+        match self {
+            Value::List(list) => {
+                let mut target = String::new();
+                for l in list {
+                    target += &match l {
+                        Value::Strings(s) => s[..].to_string(),
+                        _ => panic!("Error when parse string!")
+                    };
+                    target += "\n";
+                }
+                target
+            }
+            Value::Strings(s) => s[..].to_string(),
+            _ => panic!("Error when parse string!")
+        }
+    }
+
+    fn get_int(&self) -> u64 {
+        match self {
+            Value::Int(n) => *n,
+            _ => panic!("Error when parse int!")
+        }
+    }
+
+    pub fn contents(res: Value, files: &mut Vec<FileContent>) {
+        match res {
+            Value::List(list) => {
+                for l in list {
+                    Value::contents(l, files);
+                }
+            },
+            Value::Dict(dict) => {
+                if dict.contains_key("path") || dict.contains_key("path.utf-8") {
+                    let path = dict.get("path".into())
+                                   .unwrap().get_string();
+
+                    if !path.starts_with("____") {
+                        files.push(FileContent{
+                            path: path,
+                            length: dict.get("length".into())
+                                        .unwrap_or(&Value::Int(0)).get_int(),
+
+                            filehash: dict.get("filehash".into())
+                                          .unwrap_or(&Value::Strings("".into())).get_string()
+                        });
+                    }   
+                }
+                
+                for (_, v) in dict {
+                    Value::contents(v, files);
+                }
+            },
+            _ => {}
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct TorrentContent {
@@ -56,7 +148,17 @@ impl TorrentContent {
         }
     }
 
-    pub fn decode_int(&mut self) -> Value {
+    pub fn decode_func(&self, token: u8) -> fn(&mut TorrentContent) -> Value {
+        match token {
+            b'l' => TorrentContent::decode_list,
+            b'd' => TorrentContent::decode_dict,
+            b'i' => TorrentContent::decode_int,
+            b'0' ... b'9' => TorrentContent::decode_string,
+            _ => panic!("Unknown token...")
+        }
+    }
+
+    fn decode_int(&mut self) -> Value {
         self.index += 1;
 
         let mut newf = self.index;
@@ -65,7 +167,7 @@ impl TorrentContent {
         }
 
         let sn = String::from_utf8(self.content[self.index .. newf].to_vec()).unwrap();
-        let n = sn.parse::<u32>().unwrap();
+        let n = sn.parse::<u64>().unwrap();
 
         if self.content[self.index] == b'-' {
             if self.content[self.index + 1] == b'0' {
@@ -80,7 +182,7 @@ impl TorrentContent {
 
     }
 
-    pub fn decode_string(&mut self) -> Value {
+    fn decode_string(&mut self) -> Value {
 
         let mut colon = self.index;
         while self.content[colon] != b':' {
@@ -88,7 +190,7 @@ impl TorrentContent {
         }
 
         let sn = String::from_utf8(self.content[self.index .. colon].to_vec()).unwrap();
-        let n = sn.parse::<u32>().unwrap() as usize;
+        let n = sn.parse::<u64>().unwrap() as usize;
 
         if self.content[self.index] == b'0' && colon != self.index + 1 {
             panic!("Error when decode string!");
@@ -103,7 +205,7 @@ impl TorrentContent {
         }
     }
 
-    pub fn decode_list(&mut self) -> Value {
+    fn decode_list(&mut self) -> Value {
         let mut data: Vec<Value> = Vec::new();
         self.index += 1;
 
@@ -116,7 +218,7 @@ impl TorrentContent {
         Value::List(data)
     }
 
-    pub fn decode_dict(&mut self) -> Value {
+    fn decode_dict(&mut self) -> Value {
         let mut data = HashMap::<String, Value>::new();
         self.index += 1;
 
@@ -131,16 +233,5 @@ impl TorrentContent {
 
         self.index += 1;
         Value::Dict(data)
-    }
-
-
-    pub fn decode_func(&self, token: u8) -> fn(&mut TorrentContent) -> Value {
-        match token {
-            b'l' => TorrentContent::decode_list,
-            b'd' => TorrentContent::decode_dict,
-            b'i' => TorrentContent::decode_int,
-            b'0' ... b'9' => TorrentContent::decode_string,
-            _ => panic!("Unknown token...")
-        }
     }
 }
