@@ -11,9 +11,15 @@ use number_prefix::{binary_prefix, Standalone, Prefixed};
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::GBK;
 
+use encode::{to_sha1_hex, hex_to_binary};
+
 
 pub fn get_content(path: &str) -> ::std::io::Result<Vec<u8>> {
-    let filename = absolute_path(path).unwrap();
+    let filename = match absolute_path(path) {
+        Some(f) => f,
+        None => panic!("No such file, please input a valid path!")
+    };
+
     let mut file = File::open(&filename)?;
     let mut content: Vec<u8> = Vec::new();
     file.read_to_end(&mut content)?;
@@ -26,30 +32,6 @@ fn absolute_path(path: &str) -> Option<String> {
         Ok(buf) => Some(String::from(buf.to_str().unwrap())),
         Err(_) => None,
     }
-}
-
-fn to_sha1_hex(slice: &[u8]) -> String {
-    let mut ret: String = String::new();
-    for s in slice {
-        ret += format!("{:02x}", s).as_str();
-    }
-    ret
-}
-
-fn to_sha1_binary(hex: String) -> Result<Vec<u8>, String> {
-    let mut ret: Vec<u8> = Vec::new();
-    let mut index = 0;
-    while index < hex.len() {
-        if hex.get(index..index + 2).is_none() {
-            return Err("Not a valid hex!".to_string());
-        }
-        match u8::from_str_radix(hex.get(index..index + 2).unwrap(), 16) {
-            Ok(i) => ret.push(i),
-            Err(_) => return Err("Not a valid hex!".to_string())
-        }
-        index += 2;
-    }
-    Ok(ret)
 }
 
 
@@ -90,6 +72,30 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn get_trackers(&self) -> Vec<String> {
+        let dict = self.get_dict();
+        let mut trackers = Vec::<String>::new();
+
+        match dict.get("announce-list".into()) {
+            Some(l) => {
+                for l in &l.get_list() {
+                    trackers.push(l.get_list()[0].get_string());
+                }
+            }
+            
+            None => return match dict.get("announce".into()) {
+                Some(a) => vec![a.get_string()],
+                None => vec![]
+            }
+        };
+
+        trackers
+    }
+
+    fn get_field(&self, field: String) -> Value {
+        self.get_dict().get(&field).unwrap().clone()
+    }
+
     fn get_string(&self) -> String {
         match self {
             Value::List(list) => {
@@ -112,6 +118,13 @@ impl Value {
         match self {
             Value::Int(n) => *n,
             _ => panic!("Error when parse int!"),
+        }
+    }
+
+    fn get_list(&self) -> Vec<Value> {
+        match self {
+            Value::List(l) => l[..].to_vec(),
+            _ => panic!("Error when parse list!"),
         }
     }
 
@@ -152,7 +165,7 @@ impl Value {
 
                     files.push(FileContent {
                         path: {
-                            match to_sha1_binary(path[..].trim().to_string()) {
+                            match hex_to_binary(path[..].trim().to_string()) {
                                 Ok(v) => {
                                     match GBK.decode(&v[..], DecoderTrap::Strict) {
                                         Ok(s) => s,
@@ -197,7 +210,7 @@ impl Value {
                     if !path.starts_with("____") {
                         files.push(FileContent {
                             path: {
-                                match to_sha1_binary(path[..].trim().to_string()) {
+                                match hex_to_binary(path[..].trim().to_string()) {
                                     Ok(v) => {
                                         match GBK.decode(&v[..], DecoderTrap::Strict) {
                                             Ok(s) => s,
@@ -206,7 +219,6 @@ impl Value {
                                     },
                                     Err(_) => path
                                 }
-                                
                             },
                             length: dict.get("length".into())
                                 .unwrap_or(&Value::Int(0))
