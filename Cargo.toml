@@ -8,3 +8,4 @@ clap = {version = "~2.27.0", features = ["yaml"]}
 prettytable-rs = "0.7.0"
 number_prefix = "0.2"
 encoding = "0.2.33"
+sha1 = "0.6.0"

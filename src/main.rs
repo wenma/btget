@@ -8,13 +8,14 @@ use clap::App;
 extern crate prettytable;
 extern crate number_prefix;
 extern crate encoding;
+extern crate sha1;
 
 mod parser;
 mod encode;
 mod trackers;
 
 use parser::{FileContent, TorrentContent, Value};
-use encode::{to_url_encode, hex_to_binary};
+use encode::{to_url_encode, hex_to_binary, info_hash};
 
 
 fn main() {
@@ -23,6 +24,8 @@ fn main() {
 
     let content = parser::get_content(matches.value_of("FILE").unwrap()).unwrap();
     let first_token: u8 = content[0];
+
+    println!("\n种子特征值: {}", info_hash(&content));
 
     let mut torrent: TorrentContent = TorrentContent::new(content);
     let res = torrent.decode_func(first_token)(&mut torrent);
@@ -38,7 +41,7 @@ fn main() {
 
         println!("{:?}", res);
 
-        println!("{:?}", res.get_trackers());
+        // println!("{:?}", res.get_trackers());
 
         // println!("{:?}", to_url_encode(&[104, 101, 108, 108, 111][..]));
 
@@ -50,3 +53,6 @@ fn main() {
     }
 
 }
+
+
+

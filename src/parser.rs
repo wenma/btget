@@ -42,12 +42,13 @@ pub struct FileContent {
     filehash: String,
 }
 
+
 impl FileContent {
     pub fn pprint(files: &Vec<FileContent>) {
         let mut table = Table::new();
 
         table.add_row(
-            row![bFg -> "文件大小", bFg -> "文件名", bFg -> "hash值"],
+            row![bFg -> "文件大小", bFg -> "文件名", bFg -> "sha1值"],
         );
         for file in files {
             let length = match binary_prefix(file.length as f32) {
@@ -72,7 +73,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn get_trackers(&self) -> Vec<String> {
+    fn get_trackers(&self) -> Vec<String> {
         let dict = self.get_dict();
         let mut trackers = Vec::<String>::new();
 
